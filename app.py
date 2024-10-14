@@ -1,20 +1,18 @@
+
 import os
 from flask import Flask, jsonify, render_template
-import pyodbc
+import pymssql # Using pymssql instead of pyodbc
 from dotenv import load_dotenv
 import logging
 import pandas as pd
 from datetime import datetime, timedelta, time
 from flask_mail import Mail, Message
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-import atexit
-
+from flask import request 
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(filename='app.log', level=logging.INFO,
+# Configure logging to stdout
+logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s:%(message)s')
 
 app = Flask(__name__)
@@ -33,7 +31,6 @@ SERVER = os.getenv('DB_SERVER', 'z7\\mage800,74951')
 DATABASE = os.getenv('DB_DATABASE', 'kzstock')
 USERNAME = os.getenv('DB_USERNAME', 'gek')
 PASSWORD = os.getenv('DB_PASSWORD', 'Flag88')
-
 # Shift timings data with shift IDs
 shift_timings = [
     {"NAME": "Dave", "USERNAME": "DAVE M2", "START_TIME": "7:00 AM", "END_TIME": "3:30 PM", "SHIFT": "Shift 1"},
@@ -83,8 +80,11 @@ def fetch_performance_data():
         expected_pick_time = 135  # 2 minutes and 15 seconds
 
         # Establish a new connection for each request
-        with pyodbc.connect(
-            f'DRIVER={DRIVER};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}'
+        with pymssql.connect(
+            server=SERVER,
+            user=USERNAME,
+            password=PASSWORD,
+            database=DATABASE
         ) as conn:
             query = """
                 SELECT
