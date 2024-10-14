@@ -3,4 +3,4 @@ pymssql==2.2.5
 python-dotenv==1.0.0
 pandas==2.0.3
 Flask-Mail>=0.9.1
-awsgi==1.1.0
+awsgi>=1.1.0
