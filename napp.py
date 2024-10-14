@@ -195,8 +195,7 @@ def fetch_performance_data():
         metrics['PerformancePercentage'] = (metrics['actualpicked'] / metrics['ExpectedPicks']) * 100
 
         # Round numeric values for better readability
-       
-        metrics['AvgPerformanceRatio'] = metrics['AvgPerformanceRatio'].round(2) 
+        metrics['AvgPerformanceRatio'] = metrics['AvgPerformanceRatio'].round(2)
         metrics['ExpectedPicks'] = metrics['ExpectedPicks'].round(2)
         metrics['PerformancePercentage'] = metrics['PerformancePercentage'].round(2)
 
@@ -208,14 +207,12 @@ def fetch_performance_data():
         logging.info("Fetched and processed performance data successfully.")
         return metrics_for_email  # Return the modified metrics for the email
 
-
     except pyodbc.Error as db_err:
         logging.error(f"Database error: {db_err}")
         return None
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
         return None
-
 
 def send_email_report():
     logging.info("Preparing to send email report.")
@@ -255,30 +252,10 @@ def send_email_report():
     except Exception as e:
         logging.error(f"Failed to send email report: {e}")
 
-def schedule_email_report():
-    scheduler = BackgroundScheduler()
-    trigger = CronTrigger(hour=1, minute=0)  # 1:00 AM every day
-    scheduler.add_job(func=send_email_report, trigger=trigger, id='daily_email_report')
-    scheduler.start()
-    logging.info("Scheduler started for daily email report at 1:00 AM.")
-
-# Initialize the scheduler when the app starts
-schedule_email_report()
-
-# Ensure the scheduler shuts down when the app stops
-def shutdown_scheduler():
-    scheduler = BackgroundScheduler()
-    if scheduler.running:
-        scheduler.shutdown()
-        logging.info("Scheduler shut down successfully.")
-
-atexit.register(shutdown_scheduler)
-
 @app.route('/send-test-email')
 def send_test_email():
     send_email_report()
     return "Test email sent!"
-
 
 @app.route('/pick-performance', methods=['GET'])
 def pick_performance():
@@ -303,6 +280,16 @@ def pick_performance():
         logging.error(f"Unexpected error in /pick-performance route: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-if __name__ == '__main__':
-    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
-    app.run(debug=debug_mode, port=5001)
+
+@app.route('/send-email-report', methods=['POST'])
+def send_email_report_route():
+    # Simple authentication using a secret token
+    auth_token = request.headers.get('Authorization')
+    if auth_token != f"Bearer {os.getenv('REPORT_SECRET_TOKEN')}":
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    send_email_report()
+    return jsonify({"status": "success", "message": "Email report sent."})
+
+
+

@@ -1,3 +1,7 @@
 Flask
 pyodbc
 python-dotenv
+pandas
+flask-mail
+apscheduler
+awsgi
