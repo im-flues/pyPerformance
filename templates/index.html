@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pick Performance Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Pick Performance Dashboard</h1>
+    <canvas id="pickChart" width="800" height="600"></canvas>
+    
+    <h2>Color Legend</h2>
+    <ul>
+        <li style="color: rgba(75, 192, 192, 1);">Actual Picks</li>
+        <li style="color: rgb(90, 91, 92);">Remaining Expected Picks (for poor performance)</li>
+    </ul>
+
+    <script>
+        fetch('/pick-performance')
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    const data = result.data;
+
+                    if (data.length === 0) {
+                        console.warn('No data available to display.');
+                        return;
+                    }
+
+                    const labels = data.map(item => item.PickedBy);
+                    const actualPicks = data.map(item => item.actualpicked); // Updated here
+                    const expectedPicks = data.map(item => parseFloat(item.ExpectedPicks));
+                    const shifts = data.map(item => item.SHIFT);
+                    const performancePercentages = data.map(item => parseFloat(item.PerformancePercentage) || 0);
+
+                    // Determine which users have poor performance (performance < 80%)
+                    const poorPerformanceThreshold = 80;
+                    const hasPoorPerformance = performancePercentages.map(p => p < poorPerformanceThreshold);
+
+                    // Prepare datasets
+                    const adjustedActualPicks = actualPicks.map((value, index) => {
+                        return value; // Actual picks for all users
+                    });
+
+                    const remainingExpectedPicks = expectedPicks.map((value, index) => {
+                        if (hasPoorPerformance[index]) {
+                            const remaining = value - actualPicks[index];
+                            return remaining > 0 ? remaining : 0;
+                        } else {
+                            return null; // No remaining expected picks for good performers
+                        }
+                    });
+
+                    // Assign colors based on performance percentage for actual picks
+                    const actualBarColors = performancePercentages.map(percentage => {
+                        if (percentage >= 120) {
+                            return 'rgba(54, 162, 235, 0.7)'; // Blue
+                        } else if (percentage >= 100 && percentage < 120) {
+                            return 'rgba(75, 192, 192, 0.7)'; // Green
+                        } else if (percentage >= 80 && percentage < 100) {
+                            return 'rgba(255, 205, 86, 0.7)'; // Yellow
+                        } else if (percentage >= 60 && percentage < 80) {
+                            return 'rgba(255, 99, 132, 0.7)'; // Red
+                        } else {
+                            return 'rgba(0, 0, 0, 0.7)'; // Black
+                        }
+                    });
+
+                    const ctx = document.getElementById('pickChart').getContext('2d');
+                    const pickChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Actual Picks',
+                                    data: adjustedActualPicks,
+                                    backgroundColor: actualBarColors,
+                                    borderColor: actualBarColors.map(color => color.replace('0.7', '1')),
+                                    borderWidth: 1,
+                                    stack: 'combined',
+                                },
+                                {
+                                    label: 'Remaining Expected Picks',
+                                    data: remainingExpectedPicks,
+                                    backgroundColor: 'rgba(201, 203, 207, 0.7)', // Gray color for remaining expected picks
+                                    borderColor: 'rgba(201, 203, 207, 1)',
+                                    borderWidth: 1,
+                                    stack: 'combined',
+                                },
+                            ],
+                        },
+                        options: {
+                            indexAxis: 'y', // This makes the bar chart horizontal
+                            scales: {
+                                x: {
+                                    stacked: true, // Enable stacking for x-axis (since it's horizontal)
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Number of Picks',
+                                    },
+                                },
+                                y: {
+                                    stacked: true, // Stack the bars on the y-axis
+                                    title: {
+                                        display: true,
+                                        text: 'Picked By',
+                                    },
+                                },
+                            },
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Pick Performance per User',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        afterLabel: function(context) {
+                                            const index = context.dataIndex;
+                                            const performance = performancePercentages[index].toFixed(2);
+                                            return [
+                                                'Shift: ' + shifts[index],
+                                                'Performance: ' + performance + '%',
+                                            ];
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    });
+                } else {
+                    console.error('Error fetching data:', result.message);
+                }
+            })
+            .catch(error => console.error('Fetch error:', error));
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+.env
+/junk
+/venv
+/vscode
+/_pycache
+app.log

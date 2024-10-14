@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pick Performance Dashboard</title>
+    <!-- Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js Data Labels Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px; /* Reduced margin for better responsiveness */
+        }
+        h1, h2 {
+            text-align: center;
+            font-size: 2em;
+        }
+        #timestamp {
+            text-align: center;
+            font-size: 1em;
+            color: #555;
+            margin-bottom: 20px;
+        }
+        #pickChartContainer {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        #pickChart {
+            width: 100%;
+            height: 60vh; /* Adjust as needed */
+            max-width: 1200px; /* Increased max-width for larger screens like TVs */
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap; /* Allow wrapping on smaller screens */
+        }
+        li {
+            margin: 5px 10px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+        }
+        li span {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+        }
+        #refreshButton {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50; /* Green */
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        #refreshButton:hover {
+            background-color: #45a049;
+        }
+        /* Loading Indicator Styles */
+        #loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 1.2em;
+            color: #555;
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            h1, h2 {
+                font-size: 1.5em;
+            }
+            #timestamp {
+                font-size: 0.9em;
+            }
+            li {
+                margin: 5px;
+                font-size: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1, h2 {
+                font-size: 1.2em;
+            }
+            #timestamp {
+                font-size: 0.8em;
+            }
+            li {
+                margin: 3px;
+                font-size: 10px;
+            }
+            #refreshButton {
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+        }
+    </style>
+    <script>
+        // Function to refresh the page every 30 seconds
+        function autoRefresh() {
+            setInterval(function(){
+                window.location.reload();
+            }, 30000); // 30 seconds
+        }
+
+        // Initialize auto-refresh when the page loads
+        window.onload = autoRefresh;
+    </script>
+</head>
+<body>
+    <h1>Pick Performance Dashboard</h1>
+    <div id="timestamp">Last updated: --</div> <!-- Timestamp Element -->
+    <div id="pickChartContainer">
+        <canvas id="pickChart"></canvas>
+    </div>
+    
+    <button id="refreshButton" onclick="window.location.reload();">Refresh Data</button> <!-- Manual Refresh Button -->
+    
+    <h2>Color Legend</h2>
+    <ul>
+        <li><span style="background-color: rgba(54, 162, 235, 1);"></span>Actual Picks (Performance > 120%)</li>
+        <li><span style="background-color: rgba(75, 192, 192, 1);"></span>Actual Picks (Performance 100-120%)</li>
+        <li><span style="background-color: rgba(255, 205, 86, 0.7);"></span>Actual Picks (Performance 80-100%)</li>
+        <li><span style="background-color: rgba(255, 99, 132, 0.7);"></span>Actual Picks (Performance 60-80%)</li>
+        <li><span style="background-color: rgba(0, 0, 0, 0.7);"></span>Actual Picks (Performance < 60%)</li>
+        <li><span style="background-color: rgba(201, 203, 207, 0.7);"></span>Remaining Expected Picks</li>
+    </ul>
+
+    <!-- Loading Indicator -->
+    <div id="loading">
+        <p>Loading data...</p>
+    </div>
+
+    <script>
+        // Register the Data Labels plugin
+        Chart.register(ChartDataLabels);
+
+        // Initialize global variables
+        let pickChart; // To store the Chart.js instance
+
+        // Function to update the timestamp
+        function updateTimestamp() {
+            const now = new Date();
+            const options = {
+                year: 'numeric', month: 'long', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: true
+            };
+            const formattedTime = now.toLocaleString('en-US', options);
+            document.getElementById('timestamp').innerText = `Last updated: ${formattedTime}`;
+        }
+
+        // Function to determine font size based on screen width
+        function getFontSize() {
+            const width = window.innerWidth;
+            if (width < 480) {
+                return 10;
+            } else if (width < 768) {
+                return 12;
+            } else {
+                return 16;
+            }
+        }
+
+        // Function to fetch data and update the chart
+        async function fetchDataAndUpdateChart() {
+            try {
+                // Show loading indicator
+                document.getElementById('loading').style.display = 'block';
+
+                // Fetch data from the backend
+                const response = await fetch(`/pick-performance?t=${new Date().getTime()}`);
+                const result = await response.json();
+
+                console.log('Fetch Response:', result); // Debugging
+
+                if (result.status === 'success') {
+                    let data = result.data;
+
+                    console.log('Fetched Data:', data); // Debugging
+
+                    if (data.length === 0) {
+                        console.warn('No data available to display.');
+                        // Clear the chart if no data
+                        if (pickChart) {
+                            pickChart.data.labels = [];
+                            pickChart.data.datasets.forEach(dataset => {
+                                dataset.data = [];
+                            });
+                            pickChart.update();
+                        }
+                        updateTimestamp(); // Update timestamp even if no data
+                        document.getElementById('loading').style.display = 'none'; // Hide loading
+                        return;
+                    }
+
+                    // Sort the data array in descending order based on PerformancePercentage
+                    data.sort((a, b) => b.PerformancePercentage - a.PerformancePercentage);
+
+                    // Extract sorted data into respective arrays
+                    const labels = data.map(item => item.NAME); // Use NAME instead of PickedBy
+                    const actualPicks = data.map(item => item.actualpicked); // Actual Picks
+                    const expectedPicks = data.map(item => parseFloat(item.ExpectedPicks));
+                    const shifts = data.map(item => item.SHIFT);
+                    const performancePercentages = data.map(item => parseFloat(item.PerformancePercentage) || 0);
+
+                    // Find the maximum expected picks
+                    const maxExpectedPicks = Math.max(...expectedPicks);
+
+                    // Prepare datasets
+                    const adjustedActualPicks = actualPicks.map(value => value); // Actual picks for all users
+
+                    // Replace 'null' with 0 to prevent Chart.js issues
+                    const remainingExpectedPicks = expectedPicks.map((value, index) => {
+                        const remaining = value - actualPicks[index];
+                        return remaining > 0 ? remaining : 0;
+                    });
+
+                    // Assign colors based on performance percentage for actual picks
+                    const actualBarColors = performancePercentages.map(percentage => {
+                        if (percentage > 120) {
+                            return 'rgba(54, 162, 235, 0.7)'; // Blue for Performance > 120%
+                        } else if (percentage >= 100 && percentage <= 120) {
+                            return 'rgba(75, 192, 192, 0.7)'; // Green
+                        } else if (percentage >= 80 && percentage < 100) {
+                            return 'rgba(255, 205, 86, 0.7)'; // Yellow
+                        } else if (percentage >= 60 && percentage < 80) {
+                            return 'rgba(255, 99, 132, 0.7)'; // Red
+                        } else {
+                            return 'rgba(0, 0, 0, 0.7)'; // Black
+                        }
+                    });
+
+                    if (!pickChart) {
+                        // Initialize the chart if it hasn't been created yet
+                        const ctx = document.getElementById('pickChart').getContext('2d');
+                        pickChart = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: labels,
+                                datasets: [
+                                    {
+                                        label: 'Actual Picks',
+                                        data: adjustedActualPicks,
+                                        backgroundColor: actualBarColors,
+                                        borderColor: actualBarColors.map(color => color.replace('0.7', '1')),
+                                        borderWidth: 1,
+                                        stack: 'combined',
+                                    },
+                                    {
+                                        label: 'Remaining Expected Picks',
+                                        data: remainingExpectedPicks,
+                                        backgroundColor: 'rgba(201, 203, 207, 0.7)', // Gray color for remaining expected picks
+                                        borderColor: 'rgba(201, 203, 207, 1)',
+                                        borderWidth: 1,
+                                        stack: 'combined',
+                                    },
+                                ],
+                            },
+                            options: {
+                                responsive: true, 
+                                maintainAspectRatio: false,    
+                                indexAxis: 'y', // This makes the bar chart horizontal
+                                scales: {
+                                    x: {
+                                        stacked: true, // Enable stacking for x-axis (since it's horizontal)
+                                        beginAtZero: true,
+                                        max: maxExpectedPicks, // Set the max to the maximum expected picks
+                                        title: {
+                                            display: true,
+                                            text: 'Number of Picks',
+                                            font: {
+                                                weight: 'bold',
+                                                size: getFontSize() + 2,
+                                            },
+                                        },
+                                        ticks:{
+                                            color:'#000',
+                                            font: {
+                                                weight: 'bold', // This makes the labels bold
+                                                size: getFontSize(),
+                                            },
+                                        }
+                                    },
+                                    y: {
+                                        stacked: true, // Stack the bars on the y-axis
+                                        title: {
+                                            display: true,
+                                            text: 'Name',
+                                            font: {
+                                                weight: 'bold', // Optional: Make the axis title bold
+                                                size: getFontSize() + 2,        // Optional: Adjust the font size
+                                            },
+                                        },
+                                        ticks:{
+                                            color:'#000',
+                                            font: {
+                                                weight: 'bold', // This makes the labels bold
+                                                size: getFontSize(),
+                                            },
+                                        }
+                                    },
+                                },
+                                plugins: {
+                                    datalabels: {
+                                        anchor: 'center',
+                                        align: 'center',
+                                        formatter: function(value, context) {
+                                            if (context.dataset.label === 'Actual Picks') {
+                                                let performance = performancePercentages[context.dataIndex];
+                                                
+                                                // Cap the performance at 100%
+                                                if (performance > 100) {
+                                                    performance = 100;
+                                                }
+
+                                                return `${performance.toFixed(2)}%`;
+                                            }
+                                            return '';
+                                        },
+                                        color: function(context) {
+                                            // Get the background color of the current bar
+                                            const backgroundColor = context.dataset.backgroundColor[context.dataIndex];
+                                            
+                                            // Check if the background color is black
+                                            if (backgroundColor.startsWith('rgba(0, 0, 0')) {
+                                                return '#FFFFFF'; // White text for black bars
+                                            }
+                                            return '#000000'; // Black text for other bars
+                                        },
+                                        font: {
+                                            weight: 'bold',
+                                            size: function(context) {
+                                                return getFontSize();
+                                            }
+                                        }
+                                    },
+                                    legend: {
+                                        display: window.innerWidth > 480,
+                                        position: 'top',
+                                        labels: {
+                                            font: {
+                                                size: getFontSize(),
+                                            },
+                                        },
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Pick Performance per User',
+                                        font: {
+                                            size: getFontSize() + 4,
+                                            weight: 'bold',
+                                        },
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            afterLabel: function(context) {
+                                                const index = context.dataIndex;
+                                                let performance = performancePercentages[index];
+                                                
+                                                // Cap performance at 100% for display if it's greater than 120%
+                                                if (performance > 100) {
+                                                    performance = 100;
+                                                } else {
+                                                    performance = performance.toFixed(2);
+                                                }
+
+                                                return [
+                                                    'Shift: ' + shifts[index],
+                                                    'Performance: ' + performance + '%',
+                                                ];
+                                            },
+                                            label: function(context) {
+                                                // Customize label to include both Actual Picks and Remaining Expected Picks
+                                                if (context.dataset.label === 'Actual Picks') {
+                                                    return `Actual Picks: ${context.parsed.x}`;
+                                                } else if (context.dataset.label === 'Remaining Expected Picks') {
+                                                    return `Remaining Expected Picks: ${context.parsed.x}`;
+                                                }
+                                                return context.dataset.label;
+                                            }
+                                        },
+                                    },
+                                },
+                            },
+                            plugins: [ChartDataLabels] // Register the Data Labels plugin
+                        });
+                        console.log('Chart initialized.');
+                    } else {
+                        // Update the existing chart with new data
+                        pickChart.data.labels = labels;
+                        pickChart.data.datasets[0].data = adjustedActualPicks;
+                        pickChart.data.datasets[0].backgroundColor = actualBarColors;
+                        pickChart.data.datasets[0].borderColor = actualBarColors.map(color => color.replace('0.7', '1'));
+                        pickChart.data.datasets[1].data = remainingExpectedPicks;
+                        pickChart.options.scales.x.max = maxExpectedPicks; // Update the max for x-axis
+
+                        // Update font sizes
+                        pickChart.options.scales.x.title.font.size = getFontSize() + 2;
+                        pickChart.options.scales.x.ticks.font.size = getFontSize();
+                        pickChart.options.scales.y.title.font.size = getFontSize() + 2;
+                        pickChart.options.scales.y.ticks.font.size = getFontSize();
+                        pickChart.options.plugins.datalabels.font.size = getFontSize();
+                        pickChart.options.plugins.legend.labels.font.size = getFontSize();
+                        pickChart.options.plugins.title.font.size = getFontSize() + 4;
+
+                        pickChart.update();
+                        console.log('Chart updated.');
+                    }
+
+                    // Update the timestamp after successful data fetch
+                    updateTimestamp();
+                } else {
+                    console.error('Error fetching data:', result.message);
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+            } finally {
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Initial data fetch and chart rendering
+        fetchDataAndUpdateChart();
+
+        // Set up auto-refresh using setInterval (every 30 seconds)
+        setInterval(fetchDataAndUpdateChart, 30000); // 30000 milliseconds = 30 seconds
+
+        // Manual Refresh Button
+        document.getElementById('refreshButton').addEventListener('click', () => {
+            // Show loading indicator
+            document.getElementById('loading').style.display = 'block';
+            // Fetch data and update chart
+            fetchDataAndUpdateChart();
+        });
+
+        // Handle window resize to update chart elements dynamically
+        window.addEventListener('resize', () => {
+            if (pickChart) {
+                pickChart.options.scales.x.title.font.size = getFontSize() + 2;
+                pickChart.options.scales.x.ticks.font.size = getFontSize();
+                pickChart.options.scales.y.title.font.size = getFontSize() + 2;
+                pickChart.options.scales.y.ticks.font.size = getFontSize();
+                pickChart.options.plugins.datalabels.font.size = getFontSize();
+                pickChart.options.plugins.legend.labels.font.size = getFontSize();
+                pickChart.options.plugins.title.font.size = getFontSize() + 4;
+                pickChart.update();
+            }
+        });
+    </script>
+</body>
+</html>
